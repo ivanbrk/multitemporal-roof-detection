@@ -1,42 +1,76 @@
+#!/bin/bash
 #PBS -N roofs_2026_train
-#PBS -l select=1:ncpus=16:mem=64gb:ngpus=1
-#PBS -l walltime=48:00:00
+#PBS -l select=1:ncpus=32:mem=128gb:ngpus=4
+#PBS -l walltime=96:00:00
 #PBS -j oe
-#PBS -o roofs_2026_train.log
+#PBS -o /dev/null
 
 set -euo pipefail
 
 cd "${PBS_O_WORKDIR}"
 
 PROJECT_ROOT="$(pwd)"
+LOG_DIR="${PROJECT_ROOT}/logs"
+mkdir -p "${LOG_DIR}"
+LOG_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+LOG_PATH="${LOG_DIR}/${LOG_TIMESTAMP}.log"
+ln -sfn "${LOG_PATH}" "${LOG_DIR}/latest.log"
+exec > >(tee -a "${LOG_PATH}") 2>&1
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export PYTHONUNBUFFERED=1
+
 SIF_PATH="${PROJECT_ROOT}/hpc/roofs_2026.sif"
 IMAGE_PATH="${IMAGE_PATH:-/lustre/group/IP-2022-10-2639/data/tiles_2022_2023}"
 MASK_PATH="${MASK_PATH:-/lustre/group/IP-2022-10-2639/data/tiles_2022_2023_mask}"
 TRAIN_TEST_DATASET_PATH="${TRAIN_TEST_DATASET_PATH:-${PROJECT_ROOT}/dataset/train_test_dataset.xlsx}"
-RUN_ID="${RUN_ID:-train_hpc}"
-N_EPOCHS="${N_EPOCHS:-100}"
+RUN_ID="${RUN_ID:-train_4gpu_150ep}"
+RESUME="${RESUME:-}"
+N_EPOCHS="${N_EPOCHS:-150}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
 LR="${LR:-1e-4}"
 LOSS_NAME="${LOSS_NAME:-tversky_focal}"
 SCHEDULER_NAME="${SCHEDULER_NAME:-poly}"
-N_TRAIN_VIZ="${N_TRAIN_VIZ:-100}"
-N_TEST_VIZ="${N_TEST_VIZ:-5}"
+N_TRAIN_VIZ="${N_TRAIN_VIZ:-0}"
+N_TEST_VIZ="${N_TEST_VIZ:-0}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
-TEST_SIZE="${TEST_SIZE:-0.2}"
 VIZ_AUGS="${VIZ_AUGS:-0}"
 LOSS_WEIGHTS="${LOSS_WEIGHTS:-}"
 IMAGE_HEIGHT="${IMAGE_HEIGHT:-1000}"
 IMAGE_WIDTH="${IMAGE_WIDTH:-1000}"
 BASE_CHANNELS="${BASE_CHANNELS:-24}"
-REFRESH_TRAIN_TEST_DATASET="${REFRESH_TRAIN_TEST_DATASET:-0}"
+TRAIN_LIMIT="${TRAIN_LIMIT:-}"
+TEST_LIMIT="${TEST_LIMIT:-}"
+N_DEVICES="${N_DEVICES:-4}"
 
-if [ -n "${PBS_GPUFILE:-}" ] && [ -f "${PBS_GPUFILE}" ]; then
-    N_GPUS="$(sort -u "${PBS_GPUFILE}" | wc -l | tr -d ' ')"
-else
-    N_GPUS="$(nvidia-smi -L | wc -l | tr -d ' ')"
+if [ ! -f "${TRAIN_TEST_DATASET_PATH}" ]; then
+    echo "Train/test dataset file not found at ${TRAIN_TEST_DATASET_PATH}."
+    echo "Run the preprocessing PBS job first."
+    exit 1
 fi
 
+echo "Starting roofs_2026 training job."
+echo "Log file: ${LOG_PATH}"
+echo "Project root: ${PROJECT_ROOT}"
+echo "Image path: ${IMAGE_PATH}"
+echo "Mask path: ${MASK_PATH}"
+echo "Train/test dataset: ${TRAIN_TEST_DATASET_PATH}"
+echo "Run ID: ${RUN_ID}"
+echo "Resume: ${RESUME:-none}"
+echo "Epochs: ${N_EPOCHS}"
+echo "Per-device batch size: ${BATCH_SIZE}"
+echo "DDP devices: ${N_DEVICES}"
+echo "Base channels: ${BASE_CHANNELS}"
+echo "Num workers per process: ${NUM_WORKERS}"
+echo "PBS GPU file: ${PBS_GPUFILE:-not_set}"
+
 EXTRA_ARGS=()
+if [ -n "${RESUME}" ]; then
+    EXTRA_ARGS+=(--resume "${RESUME}")
+else
+    EXTRA_ARGS+=(--run-id "${RUN_ID}")
+fi
 if [ "${VIZ_AUGS}" = "1" ]; then
     EXTRA_ARGS+=(--viz-augs)
 fi
@@ -44,8 +78,11 @@ if [ -n "${LOSS_WEIGHTS}" ]; then
     read -r BG_WEIGHT FG_WEIGHT <<< "${LOSS_WEIGHTS}"
     EXTRA_ARGS+=(--loss-weights "${BG_WEIGHT}" "${FG_WEIGHT}")
 fi
-if [ "${REFRESH_TRAIN_TEST_DATASET}" = "1" ]; then
-    EXTRA_ARGS+=(--refresh-train-test-dataset)
+if [ -n "${TRAIN_LIMIT}" ]; then
+    EXTRA_ARGS+=(--train-limit "${TRAIN_LIMIT}")
+fi
+if [ -n "${TEST_LIMIT}" ]; then
+    EXTRA_ARGS+=(--test-limit "${TEST_LIMIT}")
 fi
 
 apptainer exec --nv \
@@ -56,14 +93,12 @@ apptainer exec --nv \
     --image-path "${IMAGE_PATH}" \
     --mask-path "${MASK_PATH}" \
     --train-test-dataset-path "${TRAIN_TEST_DATASET_PATH}" \
-    --run-id "${RUN_ID}" \
-    --test-size "${TEST_SIZE}" \
     --n-epochs "${N_EPOCHS}" \
     --batch-size "${BATCH_SIZE}" \
     --lr "${LR}" \
     --loss "${LOSS_NAME}" \
     --scheduler "${SCHEDULER_NAME}" \
-    --n-devices "${N_GPUS}" \
+    --n-devices "${N_DEVICES}" \
     --num-workers "${NUM_WORKERS}" \
     --image-size "${IMAGE_HEIGHT}" "${IMAGE_WIDTH}" \
     --base-channels "${BASE_CHANNELS}" \

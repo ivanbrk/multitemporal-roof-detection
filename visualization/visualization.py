@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 
 import numpy as np
 from PIL import Image
@@ -9,6 +10,10 @@ from dataset.roofs_dataset import load_tif_image, load_tif_mask
 
 
 YELLOW_LINE_WIDTH = 6
+
+
+def _use_progress_bar():
+    return sys.stderr.isatty()
 
 
 def _to_uint8_rgb(image):
@@ -38,7 +43,13 @@ def _combine_side_by_side(left, right, separator_color=(255, 255, 0)):
 def save_augmentation_examples(records, transform, output_dir, max_examples):
     os.makedirs(output_dir, exist_ok=True)
     selected_records = records[: max(0, int(max_examples))]
-    for record in tqdm(selected_records, desc="Saving augmentation visualizations", leave=True):
+    if _use_progress_bar():
+        iterable = tqdm(selected_records, desc="Saving augmentation visualizations", leave=True)
+    else:
+        iterable = selected_records
+        print("Saving %d augmentation visualizations to %s." % (len(selected_records), output_dir), flush=True)
+
+    for record in iterable:
         image = load_tif_image(record["image_path"])
         mask = load_tif_mask(record["mask_path"])
         transformed = transform(image=image, mask=mask)
@@ -47,6 +58,9 @@ def save_augmentation_examples(records, transform, output_dir, max_examples):
         canvas = _combine_side_by_side(augmented_image, augmented_mask, separator_color=(255, 255, 0))
         filename = "%s_aug.png" % record["tile_id"]
         _save_image(canvas, os.path.join(output_dir, filename))
+
+    if not _use_progress_bar():
+        print("Saved %d augmentation visualizations." % len(selected_records), flush=True)
 
 
 def _build_confusion_overlay(image, pred_mask, gt_mask):

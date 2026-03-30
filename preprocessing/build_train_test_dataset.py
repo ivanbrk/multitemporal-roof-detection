@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,10 @@ import pandas as pd
 import tifffile
 from scipy import ndimage
 from tqdm import tqdm
+
+
+def _use_progress_bar():
+    return sys.stderr.isatty()
 
 
 def _discover_tiffs(root_dir):
@@ -112,7 +117,14 @@ def _assign_split(records, test_size, seed):
 def build_train_test_dataset(image_path, mask_path, output_xlsx, test_size, seed=42, pixel_size_m=0.5):
     records = _collect_pairs(image_path, mask_path)
 
-    for record in tqdm(records, desc="Computing mask statistics", leave=True):
+    use_tqdm = _use_progress_bar()
+    if use_tqdm:
+        iterable = tqdm(records, desc="Computing mask statistics", leave=True, mininterval=5.0)
+    else:
+        iterable = records
+        print("Computing mask statistics for %d image/mask pairs." % len(records), flush=True)
+
+    for record in iterable:
         mask = tifffile.imread(record["mask_path"])
         fg_bg_ratio, n_objects, fg_area = _compute_mask_statistics(mask, pixel_size_m)
         record["fg_bg_ratio"] = fg_bg_ratio
@@ -137,6 +149,12 @@ def build_train_test_dataset(image_path, mask_path, output_xlsx, test_size, seed
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     dataframe.to_excel(output_xlsx, index=False)
+    if not use_tqdm:
+        print("Mask statistics completed for %d image/mask pairs." % len(dataframe), flush=True)
+    print(
+        "Train/test dataset saved to %s with %d valid image/mask pairs."
+        % (output_xlsx, len(dataframe))
+    )
     return dataframe
 
 

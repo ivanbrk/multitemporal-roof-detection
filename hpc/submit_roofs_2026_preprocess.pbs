@@ -1,14 +1,25 @@
+#!/bin/bash
 #PBS -N roofs_2026_preprocess
 #PBS -l select=1:ncpus=4:mem=8gb
 #PBS -l walltime=08:00:00
 #PBS -j oe
-#PBS -o roofs_2026_preprocess.log
+#PBS -o /dev/null
 
 set -euo pipefail
 
 cd "${PBS_O_WORKDIR}"
 
 PROJECT_ROOT="$(pwd)"
+LOG_DIR="${PROJECT_ROOT}/logs"
+mkdir -p "${LOG_DIR}"
+LOG_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+LOG_PATH="${LOG_DIR}/${LOG_TIMESTAMP}.log"
+ln -sfn "${LOG_PATH}" "${LOG_DIR}/latest.log"
+exec > >(tee -a "${LOG_PATH}") 2>&1
+
+echo "Starting roofs_2026 preprocessing job."
+echo "Log file: ${LOG_PATH}"
+
 SIF_PATH="${PROJECT_ROOT}/hpc/roofs_2026.sif"
 IMAGE_PATH="${IMAGE_PATH:-/lustre/group/IP-2022-10-2639/data/tiles_2022_2023}"
 MASK_PATH="${MASK_PATH:-/lustre/group/IP-2022-10-2639/data/tiles_2022_2023_mask}"
