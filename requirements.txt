@@ -1,0 +1,11 @@
+torch==2.2.2
+torchvision==0.17.2
+numpy==1.26.4
+pandas==2.2.2
+openpyxl==3.1.5
+tifffile==2024.8.30
+scipy==1.13.1
+albumentations==1.4.18
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+tqdm==4.66.5

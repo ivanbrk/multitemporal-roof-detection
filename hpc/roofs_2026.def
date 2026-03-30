@@ -1,0 +1,39 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
+
+%files
+    requirements.txt /root/requirements.txt
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        && rm -rf /var/lib/apt/lists/*
+
+    python -m pip install --upgrade pip
+    python -m pip install --no-cache-dir -r /root/requirements.txt
+    mkdir -p /workspace
+    if ! getent group 3725 >/dev/null; then
+        groupadd -g 3725 hpcgroup
+    fi
+    if ! id -u 5092 >/dev/null 2>&1; then
+        useradd -u 5092 -g 3725 -M -d /workspace -s /bin/bash ibrkic
+    fi
+    chown -R 5092:3725 /workspace
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export PYTHONPATH=/workspace:${PYTHONPATH}
+    export OMP_NUM_THREADS=8
+
+%runscript
+    cd /workspace
+    exec python train.py "$@"
+
+%labels
+    Author roofs_2026
+    Description Binary roof semantic segmentation environment with PyTorch, Albumentations and XLSX preprocessing.

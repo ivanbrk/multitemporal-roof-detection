@@ -1,0 +1,72 @@
+#PBS -N roofs_2026_train
+#PBS -l select=1:ncpus=16:mem=64gb:ngpus=1
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -o roofs_2026_train.log
+
+set -euo pipefail
+
+cd "${PBS_O_WORKDIR}"
+
+PROJECT_ROOT="$(pwd)"
+SIF_PATH="${PROJECT_ROOT}/hpc/roofs_2026.sif"
+IMAGE_PATH="${IMAGE_PATH:-/lustre/group/IP-2022-10-2639/data/tiles_2022_2023}"
+MASK_PATH="${MASK_PATH:-/lustre/group/IP-2022-10-2639/data/tiles_2022_2023_mask}"
+TRAIN_TEST_DATASET_PATH="${TRAIN_TEST_DATASET_PATH:-${PROJECT_ROOT}/dataset/train_test_dataset.xlsx}"
+RUN_ID="${RUN_ID:-train_hpc}"
+N_EPOCHS="${N_EPOCHS:-100}"
+BATCH_SIZE="${BATCH_SIZE:-2}"
+LR="${LR:-1e-4}"
+LOSS_NAME="${LOSS_NAME:-tversky_focal}"
+SCHEDULER_NAME="${SCHEDULER_NAME:-poly}"
+N_TRAIN_VIZ="${N_TRAIN_VIZ:-100}"
+N_TEST_VIZ="${N_TEST_VIZ:-5}"
+NUM_WORKERS="${NUM_WORKERS:-4}"
+TEST_SIZE="${TEST_SIZE:-0.2}"
+VIZ_AUGS="${VIZ_AUGS:-0}"
+LOSS_WEIGHTS="${LOSS_WEIGHTS:-}"
+IMAGE_HEIGHT="${IMAGE_HEIGHT:-1000}"
+IMAGE_WIDTH="${IMAGE_WIDTH:-1000}"
+BASE_CHANNELS="${BASE_CHANNELS:-24}"
+REFRESH_TRAIN_TEST_DATASET="${REFRESH_TRAIN_TEST_DATASET:-0}"
+
+if [ -n "${PBS_GPUFILE:-}" ] && [ -f "${PBS_GPUFILE}" ]; then
+    N_GPUS="$(sort -u "${PBS_GPUFILE}" | wc -l | tr -d ' ')"
+else
+    N_GPUS="$(nvidia-smi -L | wc -l | tr -d ' ')"
+fi
+
+EXTRA_ARGS=()
+if [ "${VIZ_AUGS}" = "1" ]; then
+    EXTRA_ARGS+=(--viz-augs)
+fi
+if [ -n "${LOSS_WEIGHTS}" ]; then
+    read -r BG_WEIGHT FG_WEIGHT <<< "${LOSS_WEIGHTS}"
+    EXTRA_ARGS+=(--loss-weights "${BG_WEIGHT}" "${FG_WEIGHT}")
+fi
+if [ "${REFRESH_TRAIN_TEST_DATASET}" = "1" ]; then
+    EXTRA_ARGS+=(--refresh-train-test-dataset)
+fi
+
+apptainer exec --nv \
+    --bind "${PROJECT_ROOT}:/workspace" \
+    "${SIF_PATH}" \
+    python /workspace/train.py \
+    --mode train \
+    --image-path "${IMAGE_PATH}" \
+    --mask-path "${MASK_PATH}" \
+    --train-test-dataset-path "${TRAIN_TEST_DATASET_PATH}" \
+    --run-id "${RUN_ID}" \
+    --test-size "${TEST_SIZE}" \
+    --n-epochs "${N_EPOCHS}" \
+    --batch-size "${BATCH_SIZE}" \
+    --lr "${LR}" \
+    --loss "${LOSS_NAME}" \
+    --scheduler "${SCHEDULER_NAME}" \
+    --n-devices "${N_GPUS}" \
+    --num-workers "${NUM_WORKERS}" \
+    --image-size "${IMAGE_HEIGHT}" "${IMAGE_WIDTH}" \
+    --base-channels "${BASE_CHANNELS}" \
+    --n-train-viz "${N_TRAIN_VIZ}" \
+    --n-test-viz "${N_TEST_VIZ}" \
+    "${EXTRA_ARGS[@]}"
