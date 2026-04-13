@@ -1,9 +1,10 @@
-from .distributed import cleanup_distributed, init_distributed, is_main_process, reduce_sum_tensor
+from .distributed import cleanup_distributed, distributed_barrier, init_distributed, is_main_process, reduce_sum_tensor
 from .io import ensure_dir, save_json, save_yaml, timestamped_run_id
 from .reproducibility import set_seed
 
 __all__ = [
     "cleanup_distributed",
+    "distributed_barrier",
     "ensure_dir",
     "init_distributed",
     "is_main_process",

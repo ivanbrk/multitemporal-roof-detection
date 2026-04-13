@@ -21,19 +21,29 @@ def init_distributed(rank, world_size, master_port):
     os.environ.setdefault("WORLD_SIZE", str(world_size))
     os.environ.setdefault("RANK", str(rank))
     os.environ.setdefault("LOCAL_RANK", str(rank))
+    os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    torch.cuda.set_device(rank)
     dist.init_process_group(
         backend="nccl",
         init_method="env://",
         rank=rank,
         world_size=world_size,
     )
-    torch.cuda.set_device(rank)
     return True
+
+
+def distributed_barrier():
+    if not dist.is_available() or not dist.is_initialized():
+        return
+    device_ids = None
+    if str(dist.get_backend()).lower() == "nccl" and torch.cuda.is_available():
+        device_ids = [torch.cuda.current_device()]
+    dist.barrier(device_ids=device_ids)
 
 
 def cleanup_distributed():
     if dist.is_available() and dist.is_initialized():
-        dist.barrier()
+        distributed_barrier()
         dist.destroy_process_group()
 
 

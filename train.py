@@ -26,7 +26,7 @@ from losses import build_loss
 from models import UNetPlusPlus
 from preprocessing import build_train_test_dataset
 from schedulers import build_scheduler
-from utils import cleanup_distributed, ensure_dir, is_main_process, save_json, save_yaml, set_seed, timestamped_run_id
+from utils import cleanup_distributed, distributed_barrier, ensure_dir, is_main_process, save_json, save_yaml, set_seed, timestamped_run_id
 from utils.distributed import find_free_port, init_distributed, reduce_sum_tensor
 from visualization import save_augmentation_examples, save_prediction_visualization
 
@@ -167,7 +167,7 @@ def ensure_train_test_dataset_ready(args, rank, distributed):
             pixel_size_m=args.pixel_size_m,
         )
     if distributed:
-        torch.distributed.barrier()
+        distributed_barrier()
 
 
 def resolve_run_directory(args):
@@ -898,7 +898,7 @@ def run_training(rank, args):
                 threshold=args.threshold,
             )
         if distributed:
-            torch.distributed.barrier()
+            distributed_barrier()
         if distributed:
             cleanup_distributed()
         return
@@ -1050,7 +1050,7 @@ def run_training(rank, args):
                 threshold=args.threshold,
             )
         if distributed:
-            torch.distributed.barrier()
+            distributed_barrier()
 
     if distributed:
         cleanup_distributed()
